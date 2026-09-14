@@ -1,2 +1,7 @@
 \postgraduate
 *.zip
+
+# Python 构建与缓存产物
+__pycache__/
+*.egg-info/
+*.py[cod]
