@@ -3,13 +3,7 @@
 内容和 ex_10_1.py 一样（同一组 A、b_1、b_2，nu_1=3、nu_2=1），
 只是 Q、p、T、Tau 和能控标准型不再手写，全部交给函数算，最后和手算结果对照。
 """
-import pathlib
-import sys
-
 import numpy as np
-
-# utils 是包，linear_system 是它的根目录，加进去后无论从哪个目录运行都能 import
-sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[2]))
 
 from utils.cal_A_c_and_B_c import cal_A_c_and_B_c, cal_p, cal_Q, cal_T, cal_Tau
 
