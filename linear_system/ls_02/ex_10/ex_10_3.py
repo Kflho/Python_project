@@ -1,11 +1,11 @@
 """把 ex_10 的例题接到 utils 里的函数上跑一遍。
 
-内容和 ex_10_1.py 一样（同一组 A、b_1、b_2，nu_1=3、nu_2=1），
+内容和 ex_10_1.py 一样，同一组 A、b_1、b_2、nu_1=3、nu_2=1
 只是 Q、p、T、Tau 和能控标准型不再手写，全部交给函数算，最后和手算结果对照。
 """
 import numpy as np
 
-from utils.cal_A_c_and_B_c import cal_A_c_and_B_c, cal_p, cal_Q, cal_T, cal_Tau
+from utils.cal_controllable_canonical_form import cal_A_c_and_B_c, cal_p, cal_Q, cal_T, cal_Tau
 
 nu_1 = 3
 nu_2 = 1

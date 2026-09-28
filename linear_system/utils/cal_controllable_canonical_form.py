@@ -26,7 +26,7 @@ A_c = T A T^-1 仍然无条件成立。所以 B_c 一律按 T B 算，Tau 单独
 import numpy as np
 from numpy.linalg import inv
 
-from .cal_Q_c import cal_Q_c
+from .cal_controllablility_matrix import cal_Q_c
 
 __all__ = ["cal_Q", "cal_p", "cal_T", "cal_Tau", "cal_A_c_and_B_c", "cal_A_new_and_B_new"]
 
