@@ -5,7 +5,7 @@
 """
 import numpy as np
 
-from utils.cal_controllable_canonical_form import cal_A_c_and_B_c, cal_p, cal_Q, cal_T, cal_Tau
+from utils.cal_matrix_operation.cal_controllable_canonical_form import cal_A_c_and_B_c, cal_p, cal_Q, cal_T, cal_Tau
 
 nu_1 = 3
 nu_2 = 1

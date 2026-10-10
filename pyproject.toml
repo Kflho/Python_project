@@ -13,7 +13,12 @@ dependencies = [
 ]
 
 [tool.setuptools]
-# 只装 utils 这一个包，练习脚本不参与打包
-packages = ["utils"]
+# 练习脚本（linear_system/ls_*）不参与打包，只装 utils 及其子包
 py-modules = []
-package-dir = { "" = "linear_system" }
+
+[tool.setuptools.packages.find]
+# utils 下面按功能分了 cal_matrix_operation / cal_matrix_parameters / cal_pole_placement，
+# 用 find + namespaces（这些子目录没有 __init__.py）才能一起装进去
+where = ["linear_system"]
+include = ["utils*"]
+namespaces = true

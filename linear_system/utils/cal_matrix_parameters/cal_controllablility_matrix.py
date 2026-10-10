@@ -12,7 +12,8 @@ def cal_Q_c(A, b, nu):
     nu: 该输入的能控性指标，即 Q_c 的列数
     返回: (n, nu)
     """
-    b = np.asarray(b).reshape(-1, 1)
+    A = np.asarray(A, dtype=float)
+    b = np.asarray(b, dtype=float).reshape(-1, 1)
     cols = [b]
     for _ in range(nu - 1):
         cols.append(A @ cols[-1])

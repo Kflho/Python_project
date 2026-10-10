@@ -22,13 +22,21 @@
 此时 A_c 不成标准型、B_c 的非零行也不落在 s_i 上，而 B_c = T B、
 A_c = T A T^-1 仍然无条件成立。所以 B_c 一律按 T B 算，Tau 单独算，
 两者是否吻合留给调用方当检验用。
+
+各函数的 A、B、Q、T 可以是 numpy 数组、嵌套列表或 sympy 矩阵，
+函数内部统一转成 float 的 numpy 数组再算（sympy 矩阵里请只放数值）。
 """
 import numpy as np
 from numpy.linalg import inv
 
-from .cal_controllablility_matrix import cal_Q_c
+from ..cal_matrix_parameters.cal_controllablility_matrix import cal_Q_c
 
 __all__ = ["cal_Q", "cal_p", "cal_T", "cal_Tau", "cal_A_c_and_B_c", "cal_A_new_and_B_new"]
+
+
+def _as_float(M):
+    """sympy 矩阵 / 嵌套列表 / 整数数组统一转成 float 的 numpy 数组（后面全用 numpy 算）"""
+    return np.asarray(M, dtype=float)
 
 
 def cal_Q(A, B, nu):
@@ -42,6 +50,9 @@ def cal_Q(A, B, nu):
     nu: 长度为 m 的能控性指标，nu[i] 是 b_i 贡献的列数
     返回: (n, n)，n = nu_1 + ... + nu_m
     """
+    A, B = _as_float(A), _as_float(B)
+    if B.ndim == 1:
+        B = B.reshape(-1, 1)
     cols = []
     for i in range(B.shape[1]):
         cols.append(cal_Q_c(A, B[:, i], nu[i]))
@@ -56,6 +67,7 @@ def cal_p(Q, nu):
     nu: 长度为 m 的能控性指标
     返回: (m, n)，第 i 行是 p_i
     """
+    Q = _as_float(Q)
     Q_inv = inv(Q)
     p = []
     s = 0
@@ -74,6 +86,7 @@ def cal_T(nu, A, B):
     B : (n, m)
     返回: (n, n)
     """
+    A, B = _as_float(A), _as_float(B)
     p = cal_p(cal_Q(A, B, nu), nu)
     blocks = []
     for i in range(len(nu)):
@@ -98,6 +111,7 @@ def cal_Tau(nu, A, B):
     这些行就是 B_c 的非零行（前提是 nu 为这组 (A, B) 真正的能控性指标），
     见 cal_A_c_and_B_c。
     """
+    A, B = _as_float(A), _as_float(B)
     p = cal_p(cal_Q(A, B, nu), nu)
     rows = []
     for i in range(len(nu)):
@@ -116,6 +130,7 @@ def cal_A_c_and_B_c(nu, A, B):
         A_c : (n, n)  对角块为能控标准型块
         B_c : (n, m)  第 nu_1+...+nu_i 行非零，就是 Tau 的各行
     """
+    A, B = _as_float(A), _as_float(B)
     T = cal_T(nu, A, B)
     A_c = T @ A @ inv(T)
     B_c = T @ B
@@ -124,6 +139,7 @@ def cal_A_c_and_B_c(nu, A, B):
 
 def cal_A_new_and_B_new(A, B, T):
     """相似变换 A_new = T A T^-1，B_new = T B"""
+    A, B, T = _as_float(A), _as_float(B), _as_float(T)
     T_inv = inv(T)
     A_new = T @ A @ T_inv
     B_new = T @ B
