@@ -1,13 +1,13 @@
 # Python 练习 + 线性系统算法库
 
 纯代码库：本目录本身就是代码根（相当于 `src/`），不再套一层 `src/`。
-代码、练习和共享包平铺，README 说明入口和用途。
+共享包放根上，练习统一收在 `exercises/`；README 说明入口和用途。
 
 | 路径 | 是什么 |
 |---|---|
 | `linear_system_utils/` | 线性系统课程练习/实验复用的算法库 |
-| `py_01/` | Python 语言练习，跟着教程走，和线性系统无关 |
-| `py_02/` | 练习占位 |
+| `exercises/py_01/` | Python 语言练习，跟着教程走，和线性系统无关 |
+| `exercises/py_02/` | 练习占位（`.gitkeep` 占位，空目录进不了 git） |
 | `pyproject.toml` | 只打包 `linear_system_utils*` |
 
 课程练习本身不在这个仓库，在 study 项目的
@@ -46,5 +46,5 @@ linear_system_utils/
 
 ## 打包
 
-`pyproject.toml` 只打包 `linear_system_utils*`；`py_01/`、`py_02/` 下的练习脚本
+`pyproject.toml` 只打包 `linear_system_utils*`；`exercises/` 下的练习脚本
 和 `.venv` 都不参与。
