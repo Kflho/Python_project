@@ -194,25 +194,30 @@ def cal_regulation_solvability(A, B, C, S, tol=1e-9):
     }
 
 
-def cal_internal_model(A, B, C, S, Bc=None):
+def cal_internal_model(A, B, C, S, Bc=None, Ac=None):
     """把外系统 S 的特征多项式做成内模，拼出"对象 + 内模"的增广系统。
 
     内模（补偿器的动态部分，e = r - y = r - C x）：
 
         eta' = A_c eta + B_c e
 
-    A_c 取 S 的特征多项式的**相变量形（友）矩阵**，B_c 默认 = [0; ...; 0; 1]。
+    A_c 默认取 S 的特征多项式的**相变量形（友）矩阵**，B_c 默认 = [0; ...; 0; 1]。
     对 S = [0 2; -2 0]（r = 0.1cos2t）特征多项式 s^2 + 4，得到
 
         A_c = [0 1; -4 0]，B_c = [0; 1]
 
-    正好就是"两个积分器 + 反馈 -4"的振荡器 —— 实验四图里那个结构。
+    但同一个传递函数有不同实现（积分链的方向、反馈取自哪一级），手搭模型时
+    状态顺序由接线决定，所以 Ac / Bc 都可以直接传进来覆盖默认值（例如实验四
+    手搭模型用的是 A_c = [0 -4; 1 0]、B_c = [1; 0]）。两种实现特征多项式相同，
+    配出来的 K_eta 只是跟着状态顺序变。
 
-    增广系统 z = [x; eta]，u 是控制输入、r 是外部参考：
+    增广系统 z = [x; eta]，u 是控制输入、r 是外部参考（误差取 e = y - r = C x - r）：
 
-        z' = A_aug z + B_aug u + [0; B_c] r
-        A_aug = [[A, 0], [-B_c C, A_c]],   B_aug = [[B], [0]]
+        z' = A_aug z + B_aug u + [0; -B_c] r
+        A_aug = [[A, 0], [B_c C, A_c]],    B_aug = [[B], [0]]
         y = C_aug z,   C_aug = [C, 0]
+
+    （若模型里误差取的是 r - y，把 Bc 传成 -Bc 即可，等价于 A_aug 的第二块取 -Bc C。）
 
     对 (A_aug, B_aug) 做极点配置得 K_aug = [K_x, K_eta]，控制律取
 
@@ -221,8 +226,9 @@ def cal_internal_model(A, B, C, S, Bc=None):
     闭环稳定则 e -> 0（内模原理）。和静态输出调节的区别：**不需要 w 可测**，
     参考的模态由内模自己"长出来"，所以还能顺带抑制同频率的干扰。
 
-    A (n,n)   B (n,m)   C (p,n)   S (ns,ns)   Bc (nc,p) 可选
-    m = p 时最省事；p > 1 请显式给 Bc（每个输出通道各配一组内模）。
+    A (n,n)   B (n,m)   C (p,n)   S (ns,ns)
+    Bc (nc,p) 可选，默认 [0;...;0;1]（p = 1 时）
+    Ac (nc,nc) 可选，默认按 S 的特征多项式构友矩阵
 
     返回 (A_aug, B_aug, C_aug, info)：
         info = {Ac, Bc, coeffs, nc, ctrb_rank, controllable}
@@ -242,10 +248,15 @@ def cal_internal_model(A, B, C, S, Bc=None):
     if nc == 0:
         raise ValueError("S 是 1x1 且特征值为 0 时没有可用的内模，请直接用积分器")
 
-    Ac = np.zeros((nc, nc))
-    if nc > 1:
-        Ac[:-1, 1:] = np.eye(nc - 1)
-    Ac[-1, :] = -coeffs[::-1][:-1]                # [-a_nc, ..., -a_1]
+    if Ac is None:
+        Ac = np.zeros((nc, nc))
+        if nc > 1:
+            Ac[:-1, 1:] = np.eye(nc - 1)
+        Ac[-1, :] = -coeffs[::-1][:-1]            # [-a_nc, ..., -a_1]
+    else:
+        Ac = np.atleast_2d(np.asarray(Ac, dtype=float))
+        if Ac.shape != (nc, nc):
+            raise ValueError(f"Ac 应为 {nc}x{nc}（外系统特征多项式阶数），实际 {Ac.shape}")
 
     if Bc is None:
         if p != 1:
@@ -253,9 +264,11 @@ def cal_internal_model(A, B, C, S, Bc=None):
         Bc = np.zeros((nc, 1))
         Bc[-1, 0] = 1.0
     Bc = np.atleast_2d(np.asarray(Bc, dtype=float))
+    if Bc.shape[0] != nc:
+        raise ValueError(f"Bc 应有 {nc} 行，实际 {Bc.shape[0]}")
 
     A_aug = np.block([[A, np.zeros((n, nc))],
-                      [-Bc @ C, Ac]])
+                      [Bc @ C, Ac]])
     B_aug = np.vstack([B, np.zeros((nc, m))])
     C_aug = np.hstack([C, np.zeros((p, nc))])
 
@@ -273,16 +286,16 @@ def cal_internal_model(A, B, C, S, Bc=None):
     return A_aug, B_aug, C_aug, info
 
 
-def cal_internal_model_closed_loop(A, B, C, S, K_aug, Bc=None):
+def cal_internal_model_closed_loop(A, B, C, S, K_aug, Bc=None, Ac=None):
     """给内模增广系统的增益 K_aug = [K_x, K_eta]，返回 (A_cl, info)。
 
     A_cl 是 z = [x; eta] 的闭环矩阵（参考 r 当外部输入处理），info 里追加
-    poles / stable / A_aug / B_aug / Ac / Bc / nc。
+    poles / stable / A_aug / B_aug / C_aug / Ac / Bc / nc。
 
     稳定性只说明 z -> 0 的齐次部分是稳的；对 r 的跟踪性由内模保证，
     仿真验证见 experiments/src/ex_04/。
     """
-    A_aug, B_aug, C_aug, info = cal_internal_model(A, B, C, S, Bc=Bc)
+    A_aug, B_aug, C_aug, info = cal_internal_model(A, B, C, S, Bc=Bc, Ac=Ac)
     K = np.atleast_2d(np.asarray(K_aug, dtype=float))
     if K.shape[1] != A_aug.shape[0]:
         raise ValueError(
