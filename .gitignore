@@ -11,3 +11,12 @@ __pycache__/
 build/
 dist/
 .pytest_cache/
+
+# 本机配置/临时输出
+local.json
+project.json
+.env
+.env.*
+temp/
+logs/
+*.log
