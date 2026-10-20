@@ -1,5 +1,8 @@
-\postgraduate
 *.zip
+
+# 虚拟环境
+.venv/
+venv/
 
 # Python 构建与缓存产物
 __pycache__/
@@ -7,3 +10,4 @@ __pycache__/
 *.py[cod]
 build/
 dist/
+.pytest_cache/

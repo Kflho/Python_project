@@ -8,7 +8,7 @@
 没有耦合，Tau 的行列式为 0，静态状态反馈判为不能解耦。
 """
 import sympy as sp
-from utils.cal_matrix_operation.cal_decoupling_control.cal_r import(
+from linear_system_utils.cal_matrix_operation.cal_decoupling_control.cal_r import(
     cal_r
 )
 __all__ = ["cal_Tau"]

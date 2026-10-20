@@ -1,9 +1,9 @@
 import sympy as sp
 
-from utils.cal_matrix_operation.cal_decoupling_control.cal_r import (
+from linear_system_utils.cal_matrix_operation.cal_decoupling_control.cal_r import (
     cal_r
 )
-from utils.cal_matrix_operation.cal_decoupling_control.cal_Tau import (
+from linear_system_utils.cal_matrix_operation.cal_decoupling_control.cal_Tau import (
     cal_Tau
 )
 def cal_decoupling_control(A, B, C, gamma):

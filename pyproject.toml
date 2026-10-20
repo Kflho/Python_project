@@ -3,22 +3,26 @@ requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "linear-system"
+name = "linear-system-utils"
 version = "0.1.0"
-description = "线性系统课程练习：能控标准型的坐标变换工具"
+description = "线性系统练习/实验复用的算法库：能控规范型、极点配置、解耦控制、Riccati"
 requires-python = ">=3.10"
 dependencies = [
     "numpy",
     "sympy",
 ]
 
+[project.optional-dependencies]
+# 库本身不依赖 scipy；个别练习要解 Lyapunov 方程（scipy.linalg）才需要
+exercises = [
+    "scipy",
+]
+
 [tool.setuptools]
-# 练习脚本（linear_system/ls_*）不参与打包，只装 utils 及其子包
+# 练习脚本都在 study 盘的 exercises/ 里，这个仓库没有平铺模块
 py-modules = []
 
 [tool.setuptools.packages.find]
-# utils 下面按功能分了 cal_matrix_operation / cal_matrix_parameters / cal_pole_placement，
-# 用 find + namespaces（这些子目录没有 __init__.py）才能一起装进去
-where = ["linear_system"]
-include = ["utils*"]
-namespaces = true
+# 只打包顶层 linear_system_utils 及其子包；python/ 下的 py_01、py_02 是练习脚本，不参与
+where = ["."]
+include = ["linear_system_utils*"]

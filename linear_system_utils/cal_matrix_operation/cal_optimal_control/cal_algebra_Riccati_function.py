@@ -43,7 +43,7 @@ cal_algebra_Riccati_numeric（Hamilton 矩阵特征向量法，纯 numpy，解�
 用法（A = [[0,1],[0,0]]、B = [[0],[1]]、Q = I、R = 1 的双积分器）：
 
     import sympy as sp
-    from utils.cal_matrix_operation.cal_optimal_control.cal_algebra_Riccati_function import (
+    from linear_system_utils.cal_matrix_operation.cal_optimal_control.cal_algebra_Riccati_function import (
         cal_algebra_Riccati_function,
         cal_optimal_feedback_gain,
     )
