@@ -30,6 +30,8 @@ __all__ = [
     "cal_regulator_equations",
     "cal_output_regulation_gain",
     "cal_regulation_solvability",
+    "cal_internal_model",
+    "cal_internal_model_closed_loop",
 ]
 
 
@@ -190,3 +192,108 @@ def cal_regulation_solvability(A, B, C, S, tol=1e-9):
         "need": need,
         "fail": bad,
     }
+
+
+def cal_internal_model(A, B, C, S, Bc=None):
+    """把外系统 S 的特征多项式做成内模，拼出"对象 + 内模"的增广系统。
+
+    内模（补偿器的动态部分，e = r - y = r - C x）：
+
+        eta' = A_c eta + B_c e
+
+    A_c 取 S 的特征多项式的**相变量形（友）矩阵**，B_c 默认 = [0; ...; 0; 1]。
+    对 S = [0 2; -2 0]（r = 0.1cos2t）特征多项式 s^2 + 4，得到
+
+        A_c = [0 1; -4 0]，B_c = [0; 1]
+
+    正好就是"两个积分器 + 反馈 -4"的振荡器 —— 实验四图里那个结构。
+
+    增广系统 z = [x; eta]，u 是控制输入、r 是外部参考：
+
+        z' = A_aug z + B_aug u + [0; B_c] r
+        A_aug = [[A, 0], [-B_c C, A_c]],   B_aug = [[B], [0]]
+        y = C_aug z,   C_aug = [C, 0]
+
+    对 (A_aug, B_aug) 做极点配置得 K_aug = [K_x, K_eta]，控制律取
+
+        u = K_x x + K_eta eta
+
+    闭环稳定则 e -> 0（内模原理）。和静态输出调节的区别：**不需要 w 可测**，
+    参考的模态由内模自己"长出来"，所以还能顺带抑制同频率的干扰。
+
+    A (n,n)   B (n,m)   C (p,n)   S (ns,ns)   Bc (nc,p) 可选
+    m = p 时最省事；p > 1 请显式给 Bc（每个输出通道各配一组内模）。
+
+    返回 (A_aug, B_aug, C_aug, info)：
+        info = {Ac, Bc, coeffs, nc, ctrb_rank, controllable}
+    """
+    A = np.atleast_2d(np.asarray(A, dtype=float))
+    B = np.asarray(B, dtype=float)
+    if B.ndim == 1:
+        B = B.reshape(-1, 1)
+    C = np.atleast_2d(np.asarray(C, dtype=float))
+    S = np.atleast_2d(np.asarray(S, dtype=float))
+
+    n, m = A.shape[0], B.shape[1]
+    p = C.shape[0]
+
+    coeffs = np.poly(np.linalg.eigvals(S))        # [1, a1, ..., a_nc]
+    nc = coeffs.size - 1
+    if nc == 0:
+        raise ValueError("S 是 1x1 且特征值为 0 时没有可用的内模，请直接用积分器")
+
+    Ac = np.zeros((nc, nc))
+    if nc > 1:
+        Ac[:-1, 1:] = np.eye(nc - 1)
+    Ac[-1, :] = -coeffs[::-1][:-1]                # [-a_nc, ..., -a_1]
+
+    if Bc is None:
+        if p != 1:
+            raise ValueError("p > 1 时请显式给 Bc（每个输出通道配一组内模）")
+        Bc = np.zeros((nc, 1))
+        Bc[-1, 0] = 1.0
+    Bc = np.atleast_2d(np.asarray(Bc, dtype=float))
+
+    A_aug = np.block([[A, np.zeros((n, nc))],
+                      [-Bc @ C, Ac]])
+    B_aug = np.vstack([B, np.zeros((nc, m))])
+    C_aug = np.hstack([C, np.zeros((p, nc))])
+
+    # 增广系统能控性（内模原理要求 (A,B) 在 S 的特征值处能控）
+    nn = n + nc
+    cols = [B_aug]
+    for _ in range(nn - 1):
+        cols.append(A_aug @ cols[-1])
+    rank = int(np.linalg.matrix_rank(np.hstack(cols)))
+
+    info = {
+        "Ac": Ac, "Bc": Bc, "coeffs": coeffs, "nc": nc,
+        "ctrb_rank": rank, "controllable": bool(rank == nn), "n_aug": nn,
+    }
+    return A_aug, B_aug, C_aug, info
+
+
+def cal_internal_model_closed_loop(A, B, C, S, K_aug, Bc=None):
+    """给内模增广系统的增益 K_aug = [K_x, K_eta]，返回 (A_cl, info)。
+
+    A_cl 是 z = [x; eta] 的闭环矩阵（参考 r 当外部输入处理），info 里追加
+    poles / stable / A_aug / B_aug / Ac / Bc / nc。
+
+    稳定性只说明 z -> 0 的齐次部分是稳的；对 r 的跟踪性由内模保证，
+    仿真验证见 experiments/src/ex_04/。
+    """
+    A_aug, B_aug, C_aug, info = cal_internal_model(A, B, C, S, Bc=Bc)
+    K = np.atleast_2d(np.asarray(K_aug, dtype=float))
+    if K.shape[1] != A_aug.shape[0]:
+        raise ValueError(
+            f"K_aug 应有 {A_aug.shape[0]} 列（[K_x, K_eta]），实际 {K.shape[1]} 列"
+        )
+    A_cl = A_aug + B_aug @ K
+    poles = np.linalg.eigvals(A_cl)
+    info.update({
+        "A_aug": A_aug, "B_aug": B_aug, "C_aug": C_aug,
+        "A_closed": A_cl, "poles": poles,
+        "stable": bool(np.all(np.real(poles) < 0)),
+    })
+    return A_cl, info
+

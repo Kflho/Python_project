@@ -20,7 +20,7 @@ linear_system_utils/
     cal_pole_placement/                  极点配置 K
     cal_decoupling_control/              解耦控制 K, G、解耦矩阵 Tau
     cal_optimal_control/                 代数 / 微分 Riccati
-    cal_output_regulation/               输出调节：调节器方程 Pi、Gamma、静态增益 Kv（可选干扰通道）
+    cal_output_regulation/               输出调节：调节器方程 Pi、Gamma、静态增益 Kv；内模增广系统（可选干扰通道）
 ```
 
 约定：放"算一遍就复用"的算法，不放任何练习脚本；新算法先在这里实现，练习和实验只调用。
