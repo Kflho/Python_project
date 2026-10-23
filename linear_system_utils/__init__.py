@@ -3,7 +3,7 @@
 按功能分两个子包：
 
     cal_matrix_parameters   能控性矩阵、能控性指标集（判据类）
-    cal_matrix_operation    能控规范型、极点配置、解耦控制、最优控制（算法类）
+    cal_matrix_operation    能控规范型、极点配置、解耦控制、最优控制、轨迹跟踪、观测器（算法类）
 
 定位：只放"算一遍就复用"的算法，不放任何练习脚本。练习在
 `D:\\data\\local\\study\\postgraduate\\linear_system\\projects\\exercises`，
