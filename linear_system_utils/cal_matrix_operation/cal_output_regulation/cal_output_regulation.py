@@ -30,6 +30,8 @@ __all__ = [
     "cal_regulator_equations",
     "cal_output_regulation_gain",
     "cal_regulation_solvability",
+    "cal_minimal_polynomial",
+    "cal_internal_model_blocks",
     "cal_internal_model",
     "cal_internal_model_closed_loop",
 ]
@@ -194,6 +196,72 @@ def cal_regulation_solvability(A, B, C, S, tol=1e-9):
     }
 
 
+def cal_minimal_polynomial(S, tol=1e-9):
+    """数值求外系统 S 的最小多项式（首一、降幂系数），返回 (coeffs, d)。
+
+    做法：把 I, S, S^2, ... 拉直成向量逐个入栈，找第一次线性相关的位置。
+    设最小的 d 使 {vec(S^0), ..., vec(S^d)} 相关，则
+
+        S^d = c_0 I + c_1 S + ... + c_{d-1} S^{d-1}
+        min poly = s^d - c_{d-1} s^{d-1} - ... - c_1 s - c_0
+
+    coeffs = [1, a_1, ..., a_d]，即 s^d + a_1 s^{d-1} + ... + a_d。
+
+    例：S = diag(0, [0 2; -2 0])（常值干扰 + r=cos2t）-> 最小多项式 s^3 + 4s，
+    coeffs = [1, 0, 4, 0]，d = 3（特征多项式也是 3 次，这里两者重合）。
+
+    S (ns,ns)  tol 判线性相关的相对容差
+    """
+    S = np.atleast_2d(np.asarray(S, dtype=float))
+    n = S.shape[0]
+    vecs = [np.eye(n).ravel()]
+    M = np.eye(n)
+    for d in range(1, n + 1):
+        M = M @ S
+        v = M.ravel()
+        V = np.vstack(vecs)                      # (d, n^2)，行是 vec(S^i)
+        sol, *_ = np.linalg.lstsq(V.T, v, rcond=None)
+        if np.linalg.norm(V.T @ sol - v) <= tol * max(1.0, np.linalg.norm(v)):
+            sol = np.where(np.abs(sol) < tol, 0.0, sol)
+            coeffs = np.concatenate(([1.0], -sol[::-1]))
+            return coeffs, d
+        vecs.append(v)
+    # 到这里说明数值上判不出来，退回特征多项式
+    return np.poly(np.linalg.eigvals(S)), n
+
+
+def cal_internal_model_blocks(S, p, tol=1e-9):
+    """多输出内模：每个输出通道各配一组，Ac = kron(I_p, Ac0)，Bc = kron(I_p, Bc0)。
+
+    课件（输出调节·动态状态反馈）里内模是分块对角：
+
+        Omega_i = 友矩阵（最小多项式 s^k0 + ... ），Pi_i = [0; ...; 0; 1]
+
+    k0 = deg(min poly(S)) 是最小多项式的次数（不是特征多项式——S 有重根/分块时
+    两者不同），l_i = k0 对每个输出都一样，于是 l = p * k0 阶。
+
+    S (ns,ns)   p 输出维数（误差通道数）
+    返回 (Ac, Bc, info)：
+        Ac (p*k0, p*k0)  Bc (p*k0, p)
+        info = {Ac0, Bc0, coeffs, k0, nc}
+    拼增广系统时把它们传给 cal_internal_model(A, B, C, S, Ac=Ac, Bc=Bc)。
+    """
+    S = np.atleast_2d(np.asarray(S, dtype=float))
+    coeffs, k0 = cal_minimal_polynomial(S, tol=tol)
+
+    Ac0 = np.zeros((k0, k0))
+    if k0 > 1:
+        Ac0[:-1, 1:] = np.eye(k0 - 1)
+    Ac0[-1, :] = -coeffs[::-1][:-1]              # [-a_k0, ..., -a_1]
+    Bc0 = np.zeros((k0, 1))
+    Bc0[-1, 0] = 1.0
+
+    Ac = np.kron(np.eye(p), Ac0)
+    Bc = np.kron(np.eye(p), Bc0)
+    info = {"Ac0": Ac0, "Bc0": Bc0, "coeffs": coeffs, "k0": k0, "nc": p * k0}
+    return Ac, Bc, info
+
+
 def cal_internal_model(A, B, C, S, Bc=None, Ac=None):
     """把外系统 S 的特征多项式做成内模，拼出"对象 + 内模"的增广系统。
 
@@ -211,6 +279,12 @@ def cal_internal_model(A, B, C, S, Bc=None, Ac=None):
     手搭模型用的是 A_c = [0 -4; 1 0]、B_c = [1; 0]）。两种实现特征多项式相同，
     配出来的 K_eta 只是跟着状态顺序变。
 
+    **多输出（p > 1）时每个输出通道各要一组内模**，阶数 l = p * k0（k0 是 S 的
+    最小多项式次数，见 cal_internal_model_blocks）。这时 A_c / B_c 显式传进来，
+    增广阶数按 A_c 的行数算，不再受 S 特征多项式次数限制：
+
+        A_c = kron(I_p, A_c0)，B_c = kron(I_p, B_c0)
+
     增广系统 z = [x; eta]，u 是控制输入、r 是外部参考（误差取 e = y - r = C x - r）：
 
         z' = A_aug z + B_aug u + [0; -B_c] r
@@ -227,11 +301,11 @@ def cal_internal_model(A, B, C, S, Bc=None, Ac=None):
     参考的模态由内模自己"长出来"，所以还能顺带抑制同频率的干扰。
 
     A (n,n)   B (n,m)   C (p,n)   S (ns,ns)
-    Bc (nc,p) 可选，默认 [0;...;0;1]（p = 1 时）
-    Ac (nc,nc) 可选，默认按 S 的特征多项式构友矩阵
+    Bc (nc,p) 可选，默认 [0;...;0;1]（仅 p = 1 时可省）
+    Ac (nc,nc) 可选，默认按 S 的特征多项式构友矩阵；给了就以它的行数定 nc
 
     返回 (A_aug, B_aug, C_aug, info)：
-        info = {Ac, Bc, coeffs, nc, ctrb_rank, controllable}
+        info = {Ac, Bc, coeffs, nc, ctrb_rank, controllable, n_aug}
     """
     A = np.atleast_2d(np.asarray(A, dtype=float))
     B = np.asarray(B, dtype=float)
@@ -243,20 +317,20 @@ def cal_internal_model(A, B, C, S, Bc=None, Ac=None):
     n, m = A.shape[0], B.shape[1]
     p = C.shape[0]
 
-    coeffs = np.poly(np.linalg.eigvals(S))        # [1, a1, ..., a_nc]
-    nc = coeffs.size - 1
-    if nc == 0:
-        raise ValueError("S 是 1x1 且特征值为 0 时没有可用的内模，请直接用积分器")
-
+    coeffs = np.poly(np.linalg.eigvals(S))        # [1, a1, ..., a_ns]
     if Ac is None:
+        nc = coeffs.size - 1
+        if nc == 0:
+            raise ValueError("S 是 1x1 且特征值为 0 时没有可用的内模，请直接用积分器")
         Ac = np.zeros((nc, nc))
         if nc > 1:
             Ac[:-1, 1:] = np.eye(nc - 1)
         Ac[-1, :] = -coeffs[::-1][:-1]            # [-a_nc, ..., -a_1]
     else:
         Ac = np.atleast_2d(np.asarray(Ac, dtype=float))
-        if Ac.shape != (nc, nc):
-            raise ValueError(f"Ac 应为 {nc}x{nc}（外系统特征多项式阶数），实际 {Ac.shape}")
+        nc = Ac.shape[0]
+        if Ac.shape[1] != nc:
+            raise ValueError(f"Ac 应为方阵，实际 {Ac.shape}")
 
     if Bc is None:
         if p != 1:
@@ -266,6 +340,8 @@ def cal_internal_model(A, B, C, S, Bc=None, Ac=None):
     Bc = np.atleast_2d(np.asarray(Bc, dtype=float))
     if Bc.shape[0] != nc:
         raise ValueError(f"Bc 应有 {nc} 行，实际 {Bc.shape[0]}")
+    if Bc.shape[1] != p:
+        raise ValueError(f"Bc 应有 {p} 列（输出通道数），实际 {Bc.shape[1]}")
 
     A_aug = np.block([[A, np.zeros((n, nc))],
                       [Bc @ C, Ac]])

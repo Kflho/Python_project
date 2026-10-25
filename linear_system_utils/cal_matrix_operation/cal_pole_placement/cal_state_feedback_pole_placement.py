@@ -40,11 +40,35 @@ def cal_gamma_star(poles):
     能控标准型里它是拿来填对角块最后一行的：
 
         A_c 第 i 块的末行 = [gamma_0, gamma_1, ..., gamma_(nu_i-1)]
+
+    极点可以是 float / Python complex / sympy 表达式。用 Python complex 给共轭对
+    （如 -1+1j 与 -1-1j）时，展式里会留下 1e-17 量级的虚部残渣，这里按 1e-12
+    的容差判成实数并 nsimplify 回有理数；不共轭的复极点没有实系数的特征多项式，
+    直接报错。
     """
     s = sympy.Symbol('s')
-    poly = sympy.prod([s - sympy.sympify(p) for p in poles])
+    poly = sympy.expand(sympy.prod([s - sympy.sympify(p) for p in poles]))
     coeffs = sympy.Poly(poly, s).all_coeffs()        # [1, gamma_(n-1), ..., gamma_1, gamma_0]
-    return -sympy.Matrix([list(reversed(coeffs[1:]))])  # 去掉首项 1，再倒序成 0..n-1（行向量）
+    return -sympy.Matrix([list(reversed(_real_coeffs(coeffs)[1:]))])
+
+
+def _real_coeffs(coeffs):
+    """把特征多项式系数里的复数残渣清掉；符号系数原样保留。
+
+    共轭极点配对时系数本来该是实的，浮点乘法会留下 ~1e-17 的虚部；
+    真出现非零虚部（极点没共轭配对）就说明配置不出实系统，报错。
+    """
+    out = []
+    for c in coeffs:
+        try:
+            z = complex(c)
+        except TypeError:                 # 带符号的系数，原样保留
+            out.append(c)
+            continue
+        if abs(z.imag) > 1e-12 * max(1.0, abs(z.real)):
+            raise ValueError(f"极点没有共轭配对，特征多项式系数出现虚部：{c}")
+        out.append(sympy.nsimplify(sympy.Float(z.real), rational=True, tolerance=1e-12))
+    return out
 
 
 def _as_float(M):

@@ -2,7 +2,9 @@
 
 from .cal_output_regulation import (
     cal_internal_model,
+    cal_internal_model_blocks,
     cal_internal_model_closed_loop,
+    cal_minimal_polynomial,
     cal_output_regulation_gain,
     cal_regulation_solvability,
     cal_regulator_equations,
@@ -12,6 +14,8 @@ __all__ = [
     "cal_regulator_equations",
     "cal_output_regulation_gain",
     "cal_regulation_solvability",
+    "cal_minimal_polynomial",
+    "cal_internal_model_blocks",
     "cal_internal_model",
     "cal_internal_model_closed_loop",
 ]
