@@ -1,28 +1,31 @@
-"""输出调节（output regulation）：调节器方程与静态状态反馈增益。
+"""输出调节（output regulation）：调节器方程组与静态状态反馈增益。
 
-问题（参考输入和干扰都由同一个"外系统"产生）：
+问题（参考与干扰由同一个外系统产生，符号按课程笔记）：
 
-    x' = A x + B u + E d        d = P w     （干扰，可省）
-    y  = C x
-    e  = y - r                  r = Q w     （参考，可省）
-    w' = S w
+    x' = A x + B u + E v
+    v' = S v
+    e  = C x + D u + J v
 
-取静态状态反馈 u = K x + K_v w 能渐近跟踪 r 并抑制 d，当且仅当存在
-(Pi, Gamma) 满足调节器方程
+v 是外系统状态，参考和干扰都是它的分量；E 把外信号送进对象，J 把参考写进误差。
 
-    Pi S = A Pi + B Gamma + E P      （稳态：x = Pi w，u = Gamma w）
-    C  Pi = Q                        （稳态输出正好等于参考）
+取静态状态反馈 u = K_x x + K_v v，能内稳定且 e -> 0，当且仅当 (A, B) 能稳、且存在
+(X, U) 满足**调节器方程组**
 
-这时的稳态是 x = Pi w。令 K_v = Gamma - K Pi，把 e = C x - Q w 写成
-e = C (x - Pi w)，而 xi = x - Pi w 满足
+    X S = A X + B U + E        （稳态轨迹 x = X v，稳态控制 u = U v）
+    0   = C X + D U + J        （稳态时误差为 0）
 
-    xi' = (A + B K) xi + (E P + B Gamma ... 全消掉) = (A + B K) xi
+这时取 K_x 使 A + B K_x 为 Hurwitz 矩阵，K_v = U - K_x X；令 xi = x - X v，则
 
-（代进去就发现外系统项被方程抵消了），所以只要 K 让 A + B K 稳定，
-任意初值下 e -> 0。
+    xi' = (A + B K_x) xi,      e = C x + D u + J v = (C + D K_x) xi
 
-本模块只负责"解方程 / 给增益 / 验残差"，K 从外面给（极点配置、LQR 都行），
+（外系统项被方程组消掉），所以只要 A + B K_x 稳定，e 必趋于 0。
+
+本模块只负责"解方程 / 给增益 / 验残差"，K_x 从外面给（极点配置、LQR 都行），
 这样既能配静态状态反馈（实验三），也能配内模动态补偿器的状态反馈（实验四）。
+
+方程组可解的判据（**不变零点条件**）见 cal_regulation_solvability：
+
+    rank[[A - sI_n, B], [C, D]] = n + p,   s 取遍 S 的特征值
 """
 import numpy as np
 
@@ -37,20 +40,19 @@ __all__ = [
 ]
 
 
-def cal_regulator_equations(A, B, C, S, Q=None, E=None, P=None, tol=1e-9):
-    """解调节器方程，返回 (Pi, Gamma, info)。
+def cal_regulator_equations(A, B, C, S, E=None, D=None, J=None, tol=1e-9):
+    """解调节器方程组，返回 (X, U, info)。
 
-        Pi S = A Pi + B Gamma + E P
-        C  Pi = Q
+        X S = A X + B U + E
+        0   = C X + D U + J
 
-    A : (n, n)      B : (n, m)      C : (p, n)
-    S : (ns, ns)    外系统（参考/干扰的生成器），w' = S w
-    Q : (p, ns)     参考输出系数 r = Q w，默认全 0（只抑制干扰）
-    E : (n, nd)     干扰输入矩阵，默认 None（无干扰）
-    P : (nd, ns)    干扰的外系统系数 d = P w，默认 None
+    A : (n, n)      B : (n, m)      C : (p, n)      D : (p, m)
+    S : (ns, ns)    外系统，v' = S v
+    E : (n, ns)     外信号输入，默认 None（无干扰、参考也不直接进对象）
+    J : (p, ns)     误差系数（参考取负就写负号），默认 None（参考为 0）
 
-    Pi : (n, ns)    稳态解 x = Pi w
-    Gamma : (m, ns) 稳态控制 u = Gamma w
+    X : (n, ns)     稳态解 x = X v
+    U : (m, ns)     稳态控制 u = U v
 
     info 里：
         residual        两块方程的合并残差（最大绝对值），数值上应 ~1e-13
@@ -74,38 +76,39 @@ def cal_regulator_equations(A, B, C, S, Q=None, E=None, P=None, tol=1e-9):
     p = C.shape[0]
     ns = S.shape[0]
 
-    Q = np.zeros((p, ns)) if Q is None else np.atleast_2d(np.asarray(Q, dtype=float))
-    EP = np.zeros((n, ns))
-    if E is not None and P is not None:
-        EP = np.atleast_2d(np.asarray(E, dtype=float)) @ np.atleast_2d(np.asarray(P, dtype=float))
+    E = np.zeros((n, ns)) if E is None else np.atleast_2d(np.asarray(E, dtype=float))
+    D = np.zeros((p, m)) if D is None else np.atleast_2d(np.asarray(D, dtype=float))
+    J = np.zeros((p, ns)) if J is None else np.atleast_2d(np.asarray(J, dtype=float))
 
-    # 未知量按列优先排：vec(Pi)（n*ns 个）后接 vec(Gamma)（m*ns 个）
+    # 未知量按列优先排：vec(X)（n*ns 个）后接 vec(U)（m*ns 个）
     M = np.zeros((n * ns + p * ns, n * ns + m * ns))
     rhs = np.zeros(M.shape[0])
-    i_pi = lambda i, j: i + j * n            # Pi[i, j]
-    i_ga = lambda k, j: n * ns + k + j * m   # Gamma[k, j]
+    i_x = lambda i, j: i + j * n              # X[i, j]
+    i_u = lambda k, j: n * ns + k + j * m     # U[k, j]
 
     row = 0
-    for j in range(ns):                       # 逐列写 Pi S - A Pi - B Gamma = E P
+    for j in range(ns):                       # 逐列写 X S - A X - B U = E
         for i in range(n):
             for k in range(ns):
-                M[row, i_pi(i, k)] += S[k, j]
+                M[row, i_x(i, k)] += S[k, j]
             for l in range(n):
-                M[row, i_pi(l, j)] -= A[i, l]
+                M[row, i_x(l, j)] -= A[i, l]
             for k in range(m):
-                M[row, i_ga(k, j)] -= B[i, k]
-            rhs[row] = EP[i, j]
+                M[row, i_u(k, j)] -= B[i, k]
+            rhs[row] = E[i, j]
             row += 1
-    for j in range(ns):                       # 再写 C Pi = Q
+    for j in range(ns):                       # 再写 C X + D U = -J
         for i in range(p):
             for l in range(n):
-                M[row, i_pi(l, j)] += C[i, l]
-            rhs[row] = Q[i, j]
+                M[row, i_x(l, j)] += C[i, l]
+            for k in range(m):
+                M[row, i_u(k, j)] += D[i, k]
+            rhs[row] = -J[i, j]
             row += 1
 
     sol, *_ = np.linalg.lstsq(M, rhs, rcond=None)
-    Pi = sol[:n * ns].reshape(ns, n).T        # 列优先还原
-    Gamma = sol[n * ns:].reshape(ns, m).T
+    X = sol[:n * ns].reshape(ns, n).T         # 列优先还原
+    U = sol[n * ns:].reshape(ns, m).T
     res = M @ sol - rhs
     rank = int(np.linalg.matrix_rank(M, tol=tol))
 
@@ -115,20 +118,21 @@ def cal_regulator_equations(A, B, C, S, Q=None, E=None, P=None, tol=1e-9):
         "n_unknown": M.shape[1],
         "unique": bool(rank == M.shape[1]),
     }
-    return Pi, Gamma, info
+    return X, U, info
 
 
-def cal_output_regulation_gain(A, B, C, S, K, Q=None, E=None, P=None):
-    """给稳定化增益 K，返回静态输出调节增益 (K_v, Pi, Gamma, info)。
+def cal_output_regulation_gain(A, B, C, S, K, E=None, D=None, J=None):
+    """给稳定化增益 K_x，返回静态输出调节增益 (K_v, X, U, info)。
 
-        u = K x + K_v w,    K_v = Gamma - K Pi
+        u = K_x x + K_v v,    K_v = U - K_x X
 
-    K : (m, n)，需要使 A + B K 稳定（u = K x 的约定，与 A - B K 相反）。
+    K_x : (m, n)，需要使 A + B K_x 稳定（u = K x 的约定，与 A - B K 相反）。
 
     info 在 cal_regulator_equations 的基础上追加：
-        residual_closed_loop    Pi S - (A+BK) Pi - B K_v - E P 的最大绝对值
-        residual_output        C Pi - Q 的最大绝对值
-        stable                 闭环 A + B K 是否稳定
+        residual_closed_loop   X S - (A + B K_x) X - B K_v - E 的最大绝对值
+        residual_output        C X + D (K_x X + K_v) + J 的最大绝对值（e 的稳态项）
+        stable                 A + B K_x 是否稳定
+        closed_loop_poles      A + B K_x 的特征值
     """
     A = np.atleast_2d(np.asarray(A, dtype=float))
     B = np.asarray(B, dtype=float)
@@ -137,29 +141,29 @@ def cal_output_regulation_gain(A, B, C, S, K, Q=None, E=None, P=None):
     C = np.atleast_2d(np.asarray(C, dtype=float))
     K = np.atleast_2d(np.asarray(K, dtype=float))
 
-    Pi, Gamma, info = cal_regulator_equations(A, B, C, S, Q=Q, E=E, P=P)
-    Kv = Gamma - K @ Pi
+    X, U, info = cal_regulator_equations(A, B, C, S, E=E, D=D, J=J)
+    K_v = U - K @ X
 
-    EP = np.zeros_like(Pi)
-    if E is not None and P is not None:
-        EP = np.atleast_2d(np.asarray(E, dtype=float)) @ np.atleast_2d(np.asarray(P, dtype=float))
-    Qm = np.zeros((C.shape[0], Pi.shape[1])) if Q is None else np.atleast_2d(np.asarray(Q, dtype=float))
+    S = np.atleast_2d(np.asarray(S, dtype=float))
+    p = C.shape[0]
+    E_m = np.zeros_like(X) if E is None else np.atleast_2d(np.asarray(E, dtype=float))
+    D_m = np.zeros((p, B.shape[1])) if D is None else np.atleast_2d(np.asarray(D, dtype=float))
+    J_m = np.zeros((p, S.shape[0])) if J is None else np.atleast_2d(np.asarray(J, dtype=float))
 
-    Acl = A + B @ K
-    info["residual_closed_loop"] = float(np.max(np.abs(Pi @ np.asarray(S, dtype=float)
-                                                      - Acl @ Pi - B @ Kv - EP)))
-    info["residual_output"] = float(np.max(np.abs(C @ Pi - Qm)))
-    info["stable"] = bool(np.all(np.real(np.linalg.eigvals(Acl)) < 0))
-    info["closed_loop_poles"] = np.linalg.eigvals(Acl).tolist()
-    return Kv, Pi, Gamma, info
+    A_cl = A + B @ K
+    info["residual_closed_loop"] = float(np.max(np.abs(X @ S - A_cl @ X - B @ K_v - E_m)))
+    info["residual_output"] = float(np.max(np.abs(C @ X + D_m @ (K @ X + K_v) + J_m)))
+    info["stable"] = bool(np.all(np.real(np.linalg.eigvals(A_cl)) < 0))
+    info["closed_loop_poles"] = np.linalg.eigvals(A_cl).tolist()
+    return K_v, X, U, info
 
 
-def cal_regulation_solvability(A, B, C, S, tol=1e-9):
-    """能调节性判据：外系统的每个特征值都不能是 (A,B,C) 的传输零点。
+def cal_regulation_solvability(A, B, C, S, D=None, tol=1e-9):
+    """能调节性判据（不变零点条件）：外系统的每个特征值都不能是 (A,B,C,D) 的传输零点。
 
     对每个 lambda in eig(S) 检查
 
-        rank([A - lambda I,  B;  C,  0]) == n + p
+        rank([A - lambda I,  B;  C,  D]) == n + p
 
     不满足说明该频率上"输入推不动 / 输出看不见"的模态存在，静态反馈无解
     （内模动态补偿同样无解，得改模型）。返回 dict：
@@ -178,12 +182,15 @@ def cal_regulation_solvability(A, B, C, S, tol=1e-9):
     S = np.atleast_2d(np.asarray(S, dtype=float))
 
     n = A.shape[0]
+    m = B.shape[1]
     p = C.shape[0]
+    D = np.zeros((p, m)) if D is None else np.atleast_2d(np.asarray(D, dtype=float))
+
     lam = np.linalg.eigvals(S)
     ranks = []
     for L in lam:
         M = np.block([[A - L * np.eye(n), B],
-                      [C, np.zeros((p, B.shape[1]))]])
+                      [C, D]])
         ranks.append(int(np.linalg.matrix_rank(M, tol=tol)))
     need = n + p
     bad = [complex(L) for L, r in zip(lam, ranks) if r < need]
@@ -233,7 +240,7 @@ def cal_minimal_polynomial(S, tol=1e-9):
 def cal_internal_model_blocks(S, p, tol=1e-9):
     """多输出内模：每个输出通道各配一组，Ac = kron(I_p, Ac0)，Bc = kron(I_p, Bc0)。
 
-    课件（输出调节·动态状态反馈）里内模是分块对角：
+    笔记（输出调节·动态状态反馈）里内模是分块对角：
 
         Omega_i = 友矩阵（最小多项式 s^k0 + ... ），Pi_i = [0; ...; 0; 1]
 
@@ -297,7 +304,7 @@ def cal_internal_model(A, B, C, S, Bc=None, Ac=None):
 
         u = K_x x + K_eta eta
 
-    闭环稳定则 e -> 0（内模原理）。和静态输出调节的区别：**不需要 w 可测**，
+    闭环稳定则 e -> 0（内模原理）。和静态输出调节的区别：**不需要 v 可测**，
     参考的模态由内模自己"长出来"，所以还能顺带抑制同频率的干扰。
 
     A (n,n)   B (n,m)   C (p,n)   S (ns,ns)
@@ -385,4 +392,3 @@ def cal_internal_model_closed_loop(A, B, C, S, K_aug, Bc=None, Ac=None):
         "stable": bool(np.all(np.real(poles) < 0)),
     })
     return A_cl, info
-

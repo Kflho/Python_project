@@ -1,4 +1,4 @@
-"""输出调节：调节器方程 Pi S = A Pi + B Gamma + E P、C Pi = Q；静态增益 K_v；内模增广系统。"""
+"""输出调节：调节器方程组 X S = A X + B U + E、0 = C X + D U + J；静态增益 K_v = U - K_x X；内模增广系统。"""
 
 from .cal_output_regulation import (
     cal_internal_model,
