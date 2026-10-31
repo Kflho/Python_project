@@ -8,6 +8,7 @@
 | `linear_system_utils/` | 线性系统课程练习/实验复用的算法库 |
 | `exercises/py_01/` | Python 语言练习，跟着教程走，和线性系统无关 |
 | `exercises/py_02/` | 练习占位（`.gitkeep` 占位，空目录进不了 git） |
+| `tests/` | 算法回归测试（拿课程例题/习题的答案当金标准） |
 | `pyproject.toml` | 只打包 `linear_system_utils*` |
 
 课程练习本身不在这个仓库，在 study 项目的
@@ -21,6 +22,7 @@ linear_system_utils/
   cal_matrix_parameters/     能控性矩阵、能控性指标集（判据类）
   cal_matrix_operation/      算法类
     cal_controllable_canonical_form.py   能控规范型：Q, p, T, Tau
+    cal_smith_form.py                    Smith 规范型变换矩阵 T_r(s) + 两条判据
     cal_pole_placement/                  极点配置 K
     cal_decoupling_control/              解耦控制 K, G、解耦矩阵 Tau
     cal_optimal_control/                 代数 / 微分 Riccati
@@ -29,8 +31,17 @@ linear_system_utils/
 ```
 
 约定：放“算一遍就复用”的算法，不放任何练习脚本；新算法先在这里实现，
-练习和实验只调用。`cal_smith_form.py`、`cal_pole_placement_formula.py`、
-`cal_differential_Riccati_function.py` 目前是占位空文件，留待按章节补。
+练习和实验只调用。`cal_pole_placement_formula.py` 目前是占位空文件，留待按章节补。
+
+## 测试
+
+`tests/` 下是算法回归测试，判据来自课件/教材给的答案（例如课程例 2.7.1 的
+$T_r(s)$ 逐元素对照）或闭式解/极限行为。不装 pytest 也能直接跑，断言失败就非零退出：
+
+```powershell
+.\.venv\Scripts\python.exe tests\test_cal_smith_form.py
+.\.venv\Scripts\python.exe tests\test_differential_riccati.py
+```
 
 ## 环境
 
